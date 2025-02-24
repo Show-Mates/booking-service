@@ -17,6 +17,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -141,5 +142,71 @@ public class BookingService {
         );
         return response.getBody();
     }
+
+    public List<Booking> createBulkBooking(List<Booking> bookings) {
+        List<Booking> createdBookings = new ArrayList<>();
+
+        for (Booking booking : bookings) {
+            // Check if the seat is already booked
+            Optional<Booking> existingBooking = bookingRepository.findByTheatreIdAndShowTimeAndSeatNumber(
+                    booking.getTheatreId(), booking.getShowTime(), booking.getSeatNumber());
+
+            if (existingBooking.isPresent() && "confirmed".equals(existingBooking.get().getStatus())) {
+                throw new SeatAlreadyBookedException("The seat " + booking.getSeatNumber() + " is already booked and confirmed.");
+            }
+
+            booking.setId(sequenceGeneratorService.generateUserId());
+            Booking savedBooking = bookingRepository.save(booking);
+            reduceSeatCount(savedBooking.getTheatreId());
+            applyDiscounts(savedBooking);
+            createdBookings.add(savedBooking);
+        }
+        return createdBookings;
+    }
+
+    public List<Booking> cancelBulkBooking(List<Booking> bookings) {
+        List<Booking> cancelledBookings = new ArrayList<>();
+
+        for (Booking booking : bookings) {
+            Optional<Booking> existingBooking = bookingRepository.findById(booking.getId());
+
+            if (existingBooking.isPresent()) {
+                Booking foundBooking = existingBooking.get();
+                if ("cancelled".equals(foundBooking.getStatus())) {
+                    throw new ResourceNotFoundException("The booking with ID " + booking.getId() + " is already cancelled.");
+                }
+                foundBooking.setStatus("cancelled");
+                Booking cancelledBooking = bookingRepository.save(foundBooking);
+                increaseSeatCount(cancelledBooking.getTheatreId()); // Adjust seat count after cancellation
+                cancelledBookings.add(cancelledBooking);
+            } else {
+                throw new ResourceNotFoundException("Booking with ID " + booking.getId() + " not found.");
+            }
+        }
+        return cancelledBookings;
+    }
+
+    private void increaseSeatCount(String theatreID) {
+        String theatreFindUrl = theatreServiceUrl + "/api/theatres/v1.0/fetch/id/" + theatreID;
+        try {
+            Theatre theatre = restTemplate.getForObject(theatreFindUrl, Theatre.class);
+            if (theatre == null) {
+                throw new ResourceNotFoundException("Theatre with ID " + theatreID + " not found.");
+            }
+            String theatreUpdateUrl = theatreServiceUrl + "/api/theatres/v1.0/update/" + theatreID;
+            theatre.setTotalSeats(theatre.getTotalSeats() + 1);
+            HttpEntity<Theatre> requestEntity = new HttpEntity<>(theatre);
+
+            restTemplate.exchange(
+                    theatreUpdateUrl,
+                    HttpMethod.PUT,
+                    requestEntity,
+                    Theatre.class
+            );
+        } catch (Exception e) {
+            System.out.println("Error occurred while updating seat count: " + e.getMessage());
+        }
+    }
+
 
 }

@@ -1,6 +1,7 @@
 package com.intv.showmates.bs.controller;
 
 import com.intv.showmates.bs.exception.ErrorResponse;
+import com.intv.showmates.bs.exception.ResourceNotFoundException;
 import com.intv.showmates.bs.exception.SeatAlreadyBookedException;
 import com.intv.showmates.bs.model.Booking;
 import com.intv.showmates.bs.model.Theatre;
@@ -76,4 +77,27 @@ public class BookingController {
         List<Theatre> theatres = bookingService.getTheatresForMovieInTown(movieId, city, date);
         return ResponseEntity.ok(theatres);
     }
+
+    @PostMapping("/bulk/book")
+    public ResponseEntity<?> createBulkBooking(@RequestBody List<Booking> bookings) {
+        try {
+            List<Booking> createdBookings = bookingService.createBulkBooking(bookings);
+            return ResponseEntity.ok(createdBookings);
+        } catch (SeatAlreadyBookedException e) {
+            ErrorResponse errorResponse = new ErrorResponse(e.getMessage(), HttpStatus.BAD_REQUEST.value());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+        }
+    }
+
+    @PostMapping("/bulk/cancel")
+    public ResponseEntity<?> cancelBulkBooking(@RequestBody List<Booking> bookings) {
+        try {
+            List<Booking> cancelledBookings = bookingService.cancelBulkBooking(bookings);
+            return ResponseEntity.ok(cancelledBookings);
+        } catch (ResourceNotFoundException e) {
+            ErrorResponse errorResponse = new ErrorResponse(e.getMessage(), HttpStatus.NOT_FOUND.value());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
+        }
+    }
+
 }
