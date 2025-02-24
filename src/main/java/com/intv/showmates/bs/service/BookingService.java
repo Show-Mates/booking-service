@@ -44,10 +44,14 @@ public class BookingService {
 
     public Booking createBooking(Booking booking) {
 
-        Optional<Booking> existingBooking = bookingRepository.findByTheatreIdAndShowTimeAndSeatNumber(
-                booking.getTheatreId(), booking.getShowTime(), booking.getSeatNumber());
+        try {
+            Optional<Booking> existingBooking = bookingRepository.findByTheatreIdAndShowTimeAndSeatNumber(
+                    booking.getTheatreId(), booking.getShowTime(), booking.getSeatNumber());
 
-        if (existingBooking.isPresent() && "confirmed".equals(existingBooking.get().getStatus())) {
+            if (existingBooking.isPresent() && "confirmed".equals(existingBooking.get().getStatus())) {
+                throw new SeatAlreadyBookedException("The seat " + booking.getSeatNumber() + " is already booked and confirmed.");
+            }
+        }catch (Exception e){
             throw new SeatAlreadyBookedException("The seat " + booking.getSeatNumber() + " is already booked and confirmed.");
         }
         booking.setId(sequenceGeneratorService.generateUserId());
@@ -55,7 +59,7 @@ public class BookingService {
         System.out.println("savedBooking : " + savedBooking);
         reduceSeatCount(savedBooking.getTheatreId());
         applyDiscounts(savedBooking);
-        return savedBooking;
+        return applyDiscounts(savedBooking);
     }
 
     public List<Booking> getBookingsByCustomerId(String customerId) {
@@ -110,11 +114,11 @@ public class BookingService {
         return count;
     }
 
-    private void applyDiscounts(Booking booking) {
+    private Booking applyDiscounts(Booking booking) {
         int totalBookingsForCustomer = bookingRepository.findByCustomerId(booking.getCustomerId()).size();
         Double discount = 0.0;
 
-        if (totalBookingsForCustomer == 3) {
+        if (totalBookingsForCustomer >= 3) {
             discount += 0.50; // 50% discount
         }
         LocalDateTime dateTime = LocalDateTime.parse(booking.getShowTime());
@@ -130,8 +134,9 @@ public class BookingService {
             double finalAmount = originalAmount - discountAmount;
             booking.setAmountPaid(finalAmount);
 
-            bookingRepository.save(booking);
+            return bookingRepository.save(booking);
         }
+        return booking;
     }
 
     public List<Theatre> getTheatresForMovieInTown(String movieId, String city, String date) {
